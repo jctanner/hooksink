@@ -21,7 +21,7 @@ use tokio::time::Instant;
 use crate::config::Config;
 use crate::store::{Event, EventFilter, EventStore, Inserted, NewEvent, StoreError, StoreResult};
 use crate::tokens::{TokenKind, TokenStore};
-use crate::verify::{classify, header, hmac_matches, signatures};
+use crate::verify::{classify, header, hmac_matches, locate, signatures};
 
 pub const DEFAULT_LIMIT: usize = 100;
 pub const MAX_LIMIT: usize = 1000;
@@ -138,8 +138,9 @@ pub(crate) fn query_pairs(raw: Option<&str>) -> Vec<(String, String)> {
         .collect()
 }
 
-/// The filter in `channel`, `source`, `event` and `sender` parameters. Each
-/// may repeat or hold a comma-separated list.
+/// The filter in `channel`, `source`, `event`, `sender`, `host` and `repo`
+/// parameters. Each may repeat or hold a comma-separated list; a `repo`
+/// value ending in `*` matches by prefix.
 pub(crate) fn event_filter(pairs: &[(String, String)]) -> EventFilter {
     let mut filter = EventFilter::default();
     for (key, value) in pairs {
@@ -148,6 +149,8 @@ pub(crate) fn event_filter(pairs: &[(String, String)]) -> EventFilter {
             "source" => &mut filter.sources,
             "event" => &mut filter.events,
             "sender" => &mut filter.senders,
+            "host" => &mut filter.hosts,
+            "repo" => &mut filter.repos,
             _ => continue,
         };
         target.extend(
@@ -208,7 +211,7 @@ async fn index() -> Response {
         "version": env!("CARGO_PKG_VERSION"),
         "endpoints": [
             "POST /hooks/{channel}   (sender token: signature, X-Gitlab-Token, Bearer or ?token=)",
-            "GET /events?channel=&source=&event=&sender=&after=&limit=&wait=   (consumer token)",
+            "GET /events?channel=&source=&event=&sender=&host=&repo=&after=&limit=&wait=   (consumer token)",
             "GET /events/{seq}   (consumer token)",
             "GET /events/{seq}/raw   (consumer token)",
             "GET /channels   (consumer token)",
@@ -313,6 +316,7 @@ async fn receive(
         Err(e) => return store_error(e),
     };
     let sender = classify(&headers, &body);
+    let origin = locate(sender.source, &body);
     let new = NewEvent {
         channel,
         source: sender.source.to_string(),
@@ -327,6 +331,8 @@ async fn receive(
         body: body.to_vec(),
         sender_token_id: Some(token_id),
         auth_method: Some(method.to_string()),
+        host: origin.host,
+        repo: origin.repo,
     };
     let summary = format!(
         "channel={} source={} event={} sender={} auth={}",
@@ -504,6 +510,8 @@ pub fn event_json(event: &Event) -> Value {
         "source": d.source,
         "delivery_id": d.delivery_id,
         "event": d.event,
+        "host": d.host,
+        "repo": d.repo,
         "received_at": timestamp(d.received_at_ms),
         "sender": sender,
         "headers": headers,
@@ -550,13 +558,15 @@ mod tests {
     #[test]
     fn filters_accept_repeats_and_commas() {
         let pairs = query_pairs(Some(
-            "source=github,jira&event=issues&event=pull_request&channel=&sender=tok_1&after=5",
+            "source=github,jira&event=issues&event=pull_request&channel=&sender=tok_1&after=5&host=github.local&repo=org/*,other/x",
         ));
         let filter = event_filter(&pairs);
         assert_eq!(filter.sources, vec!["github", "jira"]);
         assert_eq!(filter.events, vec!["issues", "pull_request"]);
         assert!(filter.channels.is_empty());
         assert_eq!(filter.senders, vec!["tok_1"]);
+        assert_eq!(filter.hosts, vec!["github.local"]);
+        assert_eq!(filter.repos, vec!["org/*", "other/x"]);
         assert_eq!(number::<i64>(&pairs, "after").unwrap(), Some(5));
         assert!(number::<i64>(&query_pairs(Some("after=x")), "after").is_err());
     }

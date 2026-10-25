@@ -10,6 +10,9 @@ consumers. See `README.md`.
 - [Admin console and tokens](docs/tasks/done/admin-console-and-tokens.md):
   sender tokens as signing secrets, consumer tokens, default tokens,
   query-time filters, and the console on a separate admin listener.
+- [Host and repository filters](docs/tasks/done/host-and-repo-filters.md):
+  `host=` and `repo=` (with `org/*` prefixes), located from each payload at
+  ingest and backfilled for older events.
 
 ## Next
 

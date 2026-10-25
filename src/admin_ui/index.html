@@ -73,13 +73,17 @@
             <div class="setup">
               <p>Keep the last <code>next_after</code> and ask for anything newer. <code>wait</code> holds the request open until an event arrives.</p>
               <pre id="consume-example"></pre>
-              <p>Filter with <code>channel</code>, <code>source</code>, <code>event</code> and <code>sender</code>; each takes a comma-separated list.</p>
+              <p>Filter with <code>channel</code>, <code>source</code>, <code>event</code>, <code>sender</code>, <code>host</code> and <code>repo</code>; each takes a comma-separated list, and <code>repo=org/*</code> matches a prefix.</p>
             </div>
           </article>
         </div>
         <div class="overview-grid">
           <article class="panel"><div class="panel-heading"><h2>Sources</h2><span class="hint">Detected from headers</span></div><div id="source-facets" class="facet-list"></div></article>
           <article class="panel"><div class="panel-heading"><h2>Event types</h2><span class="hint">Most frequent first</span></div><div id="type-facets" class="facet-list"></div></article>
+        </div>
+        <div class="overview-grid">
+          <article class="panel"><div class="panel-heading"><h2>Hosts</h2><span class="hint">From each payload</span></div><div id="host-facets" class="facet-list"></div></article>
+          <article class="panel"><div class="panel-heading"><h2>Repositories</h2><span class="hint">GitHub and GitLab repositories, Jira projects</span></div><div id="repo-facets" class="facet-list"></div></article>
         </div>
         <article class="panel table-panel">
           <div class="panel-heading"><h2>Channels</h2><button id="reset-all" class="danger-text" type="button">Reset all events</button></div>
@@ -94,11 +98,14 @@
           <label>Source<select name="source"><option value="">All sources</option></select></label>
           <label>Event type<select name="event"><option value="">All types</option></select></label>
           <label>Sender token<select name="sender"><option value="">All senders</option></select></label>
+          <label>Host<select name="host"><option value="">All hosts</option></select></label>
+          <label>Repository<input name="repo" list="repo-options" placeholder="org/repo or org/*" autocomplete="off" spellcheck="false"></label>
+          <datalist id="repo-options"></datalist>
           <button class="primary" type="submit">Apply filters</button>
         </form>
         <article class="panel table-panel">
           <div class="panel-heading"><h2>Deliveries</h2><span id="events-note" class="hint"></span></div>
-          <div class="table-scroll"><table><thead><tr><th>Seq</th><th>Received</th><th>Channel</th><th>Source / event</th><th>Sender</th><th>Size</th></tr></thead><tbody id="event-rows"></tbody></table></div>
+          <div class="table-scroll"><table><thead><tr><th>Seq</th><th>Received</th><th>Channel</th><th>Source / event</th><th>Repository</th><th>Sender</th><th>Size</th></tr></thead><tbody id="event-rows"></tbody></table></div>
           <div class="table-footer"><span class="hint">Retention removes old events automatically.</span><button id="load-more" class="secondary" type="button" hidden>Load older events</button></div>
         </article>
       </section>

@@ -182,6 +182,8 @@ async fn overview(State(state): State<AdminState>) -> Response {
             "latest_seq": facets.latest_seq,
             "sources": counts(&facets.sources),
             "types": counts(&facets.events),
+            "hosts": counts(&facets.hosts),
+            "repos": counts(&facets.repos),
         },
         "tokens": {
             "sender": active(TokenKind::Sender),

@@ -12,7 +12,7 @@ dialog{border:1px solid var(--border);border-radius:14px;padding:27px;width:480p
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 
 /* webhook-sink additions */
-.filters.event-filters{grid-template-columns:repeat(4,minmax(0,1fr)) auto}
+.filters.event-filters{grid-template-columns:repeat(6,minmax(0,1fr)) auto}
 .overview-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-bottom:22px}
 .setup{padding:0 22px 20px}.setup h3{font-size:12px;margin:16px 0 6px}.setup p{font-size:12px;color:var(--muted);margin:4px 0}
 .setup pre{max-height:none;margin:6px 0 0}
@@ -23,6 +23,7 @@ tbody tr.clickable{cursor:pointer}
 .detail-meta dt{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.6px}.detail-meta dd{margin:2px 0 0;overflow-wrap:anywhere}
 .detail-tabs{display:flex;gap:6px;margin-bottom:10px}.detail-tabs button.active{background:var(--accent-light);color:var(--accent)}
 .usage{margin-top:16px}
+@media(max-width:1250px){.filters.event-filters{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:900px){.overview-grid{grid-template-columns:1fr}.filters.event-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.detail-meta{grid-template-columns:1fr 1fr}}
 @media(max-width:620px){.sidebar nav{flex-wrap:wrap}.nav-item{width:auto;flex:1 1 40%;font-size:12px}.detail-meta{grid-template-columns:1fr}}
 .table-scroll{position:relative}

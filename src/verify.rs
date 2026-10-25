@@ -98,6 +98,88 @@ pub fn classify(headers: &HeaderMap, body: &[u8]) -> Sender {
     }
 }
 
+/// Where an event came from: the sending system's host and the repository
+/// (or Jira project) it concerns.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Origin {
+    /// Lowercase host name, without scheme, credentials or port, such as
+    /// `github.local` or `github.com`.
+    pub host: Option<String>,
+    /// `owner/repo` for GitHub, the project path for GitLab, and the project
+    /// key for Jira.
+    pub repo: Option<String>,
+}
+
+/// Find the host and repository in a payload from `source`.
+///
+/// Works from the body alone, so stored events can be located again.
+pub fn locate(source: &str, body: &[u8]) -> Origin {
+    let Ok(payload) = serde_json::from_slice::<serde_json::Value>(body) else {
+        return Origin::default();
+    };
+    let text = |pointer: &str| {
+        payload
+            .pointer(pointer)
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(str::to_string)
+    };
+    let host_of = |pointers: &[&str]| {
+        pointers
+            .iter()
+            .find_map(|p| text(p).and_then(|u| url_host(&u)))
+    };
+    match source {
+        "github" => Origin {
+            host: host_of(&[
+                "/repository/html_url",
+                "/repository/url",
+                "/organization/url",
+                "/sender/html_url",
+            ]),
+            repo: text("/repository/full_name"),
+        },
+        "gitlab" => Origin {
+            host: host_of(&[
+                "/project/web_url",
+                "/repository/homepage",
+                "/object_attributes/url",
+            ]),
+            repo: text("/project/path_with_namespace"),
+        },
+        "jira" => Origin {
+            host: host_of(&[
+                "/issue/self",
+                "/project/self",
+                "/comment/self",
+                "/user/self",
+            ]),
+            repo: text("/issue/fields/project/key")
+                .or_else(|| text("/project/key"))
+                .or_else(|| {
+                    // An issue key is PROJECT-NUMBER.
+                    text("/issue/key")
+                        .and_then(|key| key.rsplit_once('-').map(|(p, _)| p.to_string()))
+                }),
+        },
+        _ => Origin::default(),
+    }
+}
+
+/// The lowercase host of an absolute URL.
+fn url_host(url: &str) -> Option<String> {
+    let rest = url.split_once("://")?.1;
+    let authority = rest.split(['/', '?', '#']).next()?;
+    let host_port = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
+    let host = if let Some(bracketed) = host_port.strip_prefix('[') {
+        bracketed.split(']').next()?
+    } else {
+        host_port.split(':').next()?
+    };
+    Some(host.to_ascii_lowercase()).filter(|h| !h.is_empty())
+}
+
 pub fn header<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
     headers
         .get(name)
@@ -152,6 +234,68 @@ mod tests {
         assert_eq!(signatures(&malformed), vec![Vec::<u8>::new()]);
         assert!(!signature_matches(b"k", &malformed, body));
         assert!(!signature_matches(b"k", &HeaderMap::new(), body));
+    }
+
+    #[test]
+    fn locates_github_gitlab_and_jira_events() {
+        let github = br#"{"repository":{"full_name":"org/repo","html_url":"https://GitHub.local:8443/org/repo"}}"#;
+        assert_eq!(
+            locate("github", github),
+            Origin {
+                host: Some("github.local".into()),
+                repo: Some("org/repo".into())
+            }
+        );
+        // An organization event has a host but no repository.
+        assert_eq!(
+            locate(
+                "github",
+                br#"{"organization":{"url":"https://api.github.com/orgs/x"}}"#
+            ),
+            Origin {
+                host: Some("api.github.com".into()),
+                repo: None
+            }
+        );
+        let gitlab = br#"{"project":{"path_with_namespace":"group/sub/proj","web_url":"https://gitlab.local/group/sub/proj"}}"#;
+        assert_eq!(
+            locate("gitlab", gitlab),
+            Origin {
+                host: Some("gitlab.local".into()),
+                repo: Some("group/sub/proj".into())
+            }
+        );
+        let jira = br#"{"issue":{"key":"RHAIRFE-12","self":"https://user:pw@jira.local/rest/api/2/issue/9"}}"#;
+        assert_eq!(
+            locate("jira", jira),
+            Origin {
+                host: Some("jira.local".into()),
+                repo: Some("RHAIRFE".into())
+            }
+        );
+        let jira_fields = br#"{"issue":{"key":"X-1","fields":{"project":{"key":"PROJ"}}}}"#;
+        assert_eq!(locate("jira", jira_fields).repo.as_deref(), Some("PROJ"));
+    }
+
+    #[test]
+    fn locate_tolerates_anything() {
+        assert_eq!(
+            locate("generic", br#"{"repository":{"full_name":"a/b"}}"#),
+            Origin::default()
+        );
+        assert_eq!(locate("github", b"not json"), Origin::default());
+        assert_eq!(
+            locate(
+                "github",
+                br#"{"repository":{"html_url":"no-scheme","full_name":""}}"#
+            ),
+            Origin::default()
+        );
+        assert_eq!(url_host("http://[::1]:8080/x").as_deref(), Some("::1"));
+        assert_eq!(
+            url_host("https://h.example?x=1").as_deref(),
+            Some("h.example")
+        );
     }
 
     #[test]

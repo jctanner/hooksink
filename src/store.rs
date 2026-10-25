@@ -16,6 +16,7 @@ use crate::tokens::{
     DefaultToken, NewToken, SenderKey, Token, TokenKind, TokenStore, display_prefix, fingerprint,
     new_id,
 };
+use crate::verify::locate;
 
 #[derive(Debug)]
 pub struct StoreError(String);
@@ -65,6 +66,10 @@ pub struct NewEvent {
     pub sender_token_id: Option<String>,
     /// How it authenticated: `hmac`, `gitlab-token`, `bearer` or `query`.
     pub auth_method: Option<String>,
+    /// The sending system's host, from the payload; see `verify::locate`.
+    pub host: Option<String>,
+    /// The repository, GitLab project or Jira project, from the payload.
+    pub repo: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -99,6 +104,9 @@ pub struct EventFilter {
     pub events: Vec<String>,
     /// Sender token IDs.
     pub senders: Vec<String>,
+    pub hosts: Vec<String>,
+    /// A value ending in `*` matches by prefix, such as `org/*`.
+    pub repos: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -107,6 +115,8 @@ pub struct Facets {
     pub latest_seq: i64,
     pub sources: Vec<(String, u64)>,
     pub events: Vec<(String, u64)>,
+    pub hosts: Vec<(String, u64)>,
+    pub repos: Vec<(String, u64)>,
 }
 
 pub trait EventStore: Send + Sync {
@@ -151,7 +161,9 @@ CREATE TABLE IF NOT EXISTS events (
     content_type TEXT,
     body BLOB NOT NULL,
     sender_token_id TEXT,
-    auth_method TEXT
+    auth_method TEXT,
+    host TEXT,
+    repo TEXT
 );
 CREATE TABLE IF NOT EXISTS tokens (
     id TEXT PRIMARY KEY,
@@ -172,8 +184,16 @@ CREATE TABLE IF NOT EXISTS tokens (
 
 /// Columns added since the first release, added in place to older databases.
 /// Older databases also keep an unused `signature_valid` column.
-const ADDED_EVENT_COLUMNS: &[(&str, &str)] =
-    &[("sender_token_id", "TEXT"), ("auth_method", "TEXT")];
+const ADDED_EVENT_COLUMNS: &[(&str, &str)] = &[
+    ("sender_token_id", "TEXT"),
+    ("auth_method", "TEXT"),
+    ("host", "TEXT"),
+    ("repo", "TEXT"),
+];
+
+/// `PRAGMA user_version` once host and repo have been filled in for events
+/// stored before they existed.
+const ORIGIN_BACKFILLED: i64 = 1;
 
 const INDEXES: &str = "
 CREATE UNIQUE INDEX IF NOT EXISTS events_channel_delivery
@@ -181,10 +201,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS events_channel_delivery
 CREATE INDEX IF NOT EXISTS events_channel_seq ON events (channel, seq);
 CREATE INDEX IF NOT EXISTS events_received_at ON events (received_at_ms);
 CREATE INDEX IF NOT EXISTS tokens_kind ON tokens (kind, created_at_ms);
+CREATE INDEX IF NOT EXISTS events_host_seq ON events (host, seq);
+CREATE INDEX IF NOT EXISTS events_repo_seq ON events (repo, seq);
 ";
 
 const EVENT_COLUMNS: &str = "e.seq, e.channel, e.source, e.delivery_id, e.event, \
-    e.received_at_ms, e.headers, e.content_type, e.body, e.sender_token_id, e.auth_method, t.name";
+    e.received_at_ms, e.headers, e.content_type, e.body, e.sender_token_id, e.auth_method, \
+    e.host, e.repo, t.name";
 const EVENT_FROM: &str = "events e LEFT JOIN tokens t ON t.id = e.sender_token_id";
 
 const TOKEN_COLUMNS: &str = "id, kind, name, description, prefix, is_default, created_at_ms, \
@@ -219,6 +242,7 @@ impl SqliteStore {
             }
         }
         conn.execute_batch(INDEXES)?;
+        backfill_origins(&conn)?;
         Ok(Self {
             conn: Mutex::new(conn),
             keep_consumer_values: false,
@@ -267,8 +291,10 @@ fn row_to_event(row: &Row<'_>) -> rusqlite::Result<(Event, String)> {
             body: row.get(8)?,
             sender_token_id: row.get(9)?,
             auth_method: row.get(10)?,
+            host: row.get(11)?,
+            repo: row.get(12)?,
         },
-        sender_name: row.get(11)?,
+        sender_name: row.get(13)?,
     };
     Ok((event, headers))
 }
@@ -289,6 +315,7 @@ fn filter_clauses(filter: &EventFilter, clauses: &mut Vec<String>, values: &mut 
         ("e.source", &filter.sources),
         ("e.event", &filter.events),
         ("e.sender_token_id", &filter.senders),
+        ("e.host", &filter.hosts),
     ] {
         if wanted.is_empty() {
             continue;
@@ -297,6 +324,66 @@ fn filter_clauses(filter: &EventFilter, clauses: &mut Vec<String>, values: &mut 
         clauses.push(format!("{column} IN ({marks})"));
         values.extend(wanted.iter().cloned().map(SqlValue::Text));
     }
+    if !filter.repos.is_empty() {
+        // Exact names, or prefixes for values ending in `*`.
+        let mut any = Vec::new();
+        for repo in &filter.repos {
+            match repo.strip_suffix('*') {
+                Some(prefix) => {
+                    any.push("e.repo LIKE ? ESCAPE '\\'".to_string());
+                    values.push(SqlValue::Text(format!("{}%", escape_like(prefix))));
+                }
+                None => {
+                    any.push("e.repo = ?".to_string());
+                    values.push(SqlValue::Text(repo.clone()));
+                }
+            }
+        }
+        clauses.push(format!("({})", any.join(" OR ")));
+    }
+}
+
+fn escape_like(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for c in value.chars() {
+        if matches!(c, '%' | '_' | '\\') {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// Fill in host and repo for events stored before those columns existed.
+/// Runs once per database.
+fn backfill_origins(conn: &Connection) -> StoreResult<()> {
+    let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if version >= ORIGIN_BACKFILLED {
+        return Ok(());
+    }
+    let rows = conn
+        .prepare("SELECT seq, source, body FROM events WHERE host IS NULL AND repo IS NULL")?
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Vec<u8>>(2)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let tx = conn.unchecked_transaction()?;
+    for (seq, source, body) in rows {
+        let origin = locate(&source, &body);
+        if origin.host.is_some() || origin.repo.is_some() {
+            tx.execute(
+                "UPDATE events SET host = ?1, repo = ?2 WHERE seq = ?3",
+                params![origin.host, origin.repo, seq],
+            )?;
+        }
+    }
+    tx.execute_batch(&format!("PRAGMA user_version = {ORIGIN_BACKFILLED}"))?;
+    tx.commit()?;
+    Ok(())
 }
 
 fn row_to_token(row: &Row<'_>) -> rusqlite::Result<Token> {
@@ -377,8 +464,8 @@ impl EventStore for SqliteStore {
         }
         conn.execute(
             "INSERT INTO events (channel, source, delivery_id, event, received_at_ms, headers,
-                                 content_type, body, sender_token_id, auth_method)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                                 content_type, body, sender_token_id, auth_method, host, repo)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 e.channel,
                 e.source,
@@ -390,6 +477,8 @@ impl EventStore for SqliteStore {
                 e.body,
                 e.sender_token_id,
                 e.auth_method,
+                e.host,
+                e.repo,
             ],
         )?;
         Ok(Inserted::New(conn.last_insert_rowid()))
@@ -487,6 +576,14 @@ impl EventStore for SqliteStore {
             events: counts(
                 "SELECT event, COUNT(*) FROM events WHERE event IS NOT NULL
                  GROUP BY event ORDER BY COUNT(*) DESC LIMIT 200",
+            )?,
+            hosts: counts(
+                "SELECT host, COUNT(*) FROM events WHERE host IS NOT NULL
+                 GROUP BY host ORDER BY COUNT(*) DESC LIMIT 200",
+            )?,
+            repos: counts(
+                "SELECT repo, COUNT(*) FROM events WHERE repo IS NOT NULL
+                 GROUP BY repo ORDER BY COUNT(*) DESC LIMIT 200",
             )?,
         })
     }
@@ -685,6 +782,8 @@ mod tests {
             body: vec![0, 159, 146, 150, 255],
             sender_token_id: None,
             auth_method: None,
+            host: None,
+            repo: None,
         }
     }
 
@@ -771,6 +870,47 @@ mod tests {
         assert_eq!((facets.total, facets.latest_seq), (4, 4));
         assert_eq!(facets.sources[0], ("github".into(), 3));
         assert_eq!(facets.events[0], ("issues".into(), 2));
+    }
+
+    #[test]
+    fn host_and_repo_filters_with_prefixes() {
+        let store = SqliteStore::open_in_memory().unwrap();
+        for (host, repo) in [
+            ("github.local", "org/a"),
+            ("github.local", "org/b"),
+            ("github.com", "org/a"),
+            ("github.local", "other/c"),
+            ("github.local", "org_x/d"),
+        ] {
+            let mut e = event("gh", None, 1);
+            e.host = Some(host.into());
+            e.repo = Some(repo.into());
+            store.insert(&e).unwrap();
+        }
+        let seqs = |filter: EventFilter| {
+            store
+                .list(&filter, 0, 10)
+                .unwrap()
+                .iter()
+                .map(|e| e.seq)
+                .collect::<Vec<_>>()
+        };
+        let by = |hosts: &[&str], repos: &[&str]| EventFilter {
+            hosts: hosts.iter().map(|s| s.to_string()).collect(),
+            repos: repos.iter().map(|s| s.to_string()).collect(),
+            ..all()
+        };
+        assert_eq!(seqs(by(&["github.local"], &[])), vec![1, 2, 4, 5]);
+        assert_eq!(seqs(by(&[], &["org/a"])), vec![1, 3]);
+        assert_eq!(seqs(by(&["github.local"], &["org/a"])), vec![1]);
+        assert_eq!(seqs(by(&[], &["org/*"])), vec![1, 2, 3]);
+        // `_` is literal in a prefix, not a LIKE wildcard.
+        assert_eq!(seqs(by(&[], &["org_*"])), vec![5]);
+        assert_eq!(seqs(by(&[], &["org/a", "other/*"])), vec![1, 3, 4]);
+        assert_eq!(seqs(by(&[], &["*"])), vec![1, 2, 3, 4, 5]);
+        let facets = store.facets().unwrap();
+        assert_eq!(facets.hosts[0], ("github.local".into(), 4));
+        assert_eq!(facets.repos[0], ("org/a".into(), 2));
     }
 
     #[test]
@@ -1024,7 +1164,10 @@ mod tests {
                      received_at_ms INTEGER NOT NULL, headers TEXT NOT NULL,
                      content_type TEXT, body BLOB NOT NULL, signature_valid INTEGER);
                  INSERT INTO events (channel, source, received_at_ms, headers, body, signature_valid)
-                     VALUES ('old', 'github', 1, '[]', x'7b7d', 1);",
+                     VALUES ('old', 'github', 1, '[]', x'7b7d', 1);
+                 INSERT INTO events (channel, source, received_at_ms, headers, body)
+                     VALUES ('old', 'github', 2, '[]',
+                             CAST('{\"repository\":{\"full_name\":\"org/r\",\"html_url\":\"https://github.local/org/r\"}}' AS BLOB));",
             )
             .unwrap();
         }
@@ -1032,7 +1175,18 @@ mod tests {
         let old = store.get(1).unwrap().unwrap();
         assert_eq!(old.data.channel, "old");
         assert_eq!(old.data.sender_token_id, None);
-        store.insert(&event("new", None, 2)).unwrap();
-        assert_eq!(store.list(&all(), 0, 10).unwrap().len(), 2);
+        // Events stored before host and repo existed are located on upgrade.
+        let located = store.get(2).unwrap().unwrap();
+        assert_eq!(located.data.host.as_deref(), Some("github.local"));
+        assert_eq!(located.data.repo.as_deref(), Some("org/r"));
+        store.insert(&event("new", None, 3)).unwrap();
+        assert_eq!(store.list(&all(), 0, 10).unwrap().len(), 3);
+        drop(store);
+        // The backfill runs once.
+        let conn = Connection::open(&path).unwrap();
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, ORIGIN_BACKFILLED);
     }
 }

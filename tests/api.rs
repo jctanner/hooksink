@@ -750,3 +750,115 @@ async fn reveal_mode_shows_every_active_token_value() {
     let (_, list) = sink.admin("GET", "/tokens", None).await;
     assert!(!list.to_string().contains(CONSUMER));
 }
+
+fn github_payload(host: &str, repo: &str) -> Vec<u8> {
+    json!({
+        "action": "opened",
+        "repository": { "full_name": repo, "html_url": format!("https://{host}/{repo}") },
+    })
+    .to_string()
+    .into_bytes()
+}
+
+#[tokio::test]
+async fn consumers_filter_by_host_and_repo() {
+    let sink = sink();
+    for (host, repo) in [
+        ("github.local", "fullsend-dev/triage-target"),
+        ("github.local", "fullsend-dev/other"),
+        ("github.com", "fullsend-dev/triage-target"),
+        ("github.local", "markov/workflows"),
+    ] {
+        sink.post(
+            "gh",
+            &[("x-github-event", "issues")],
+            &github_payload(host, repo),
+        )
+        .await;
+    }
+    let jira = br#"{"webhookEvent":"jira:issue_created","issue":{"key":"RHAIRFE-7","self":"https://jira.local/rest/api/2/issue/7"}}"#;
+    sink.post("jira", &[], jira).await;
+
+    let (_, first) = sink.get("/events/1").await;
+    assert_eq!(first["host"], "github.local");
+    assert_eq!(first["repo"], "fullsend-dev/triage-target");
+    let (_, jira_event) = sink.get("/events/5").await;
+    assert_eq!(
+        (jira_event["host"].as_str(), jira_event["repo"].as_str()),
+        (Some("jira.local"), Some("RHAIRFE"))
+    );
+
+    let cases = [
+        ("/events?host=github.local", vec![1, 2, 4]),
+        ("/events?host=github.com", vec![3]),
+        ("/events?repo=fullsend-dev/triage-target", vec![1, 3]),
+        (
+            "/events?host=github.local&repo=fullsend-dev/triage-target",
+            vec![1],
+        ),
+        ("/events?repo=fullsend-dev/*", vec![1, 2, 3]),
+        (
+            "/events?host=github.local&repo=fullsend-dev/*,markov/*",
+            vec![1, 2, 4],
+        ),
+        ("/events?host=jira.local&repo=RHAIRFE", vec![5]),
+        ("/events?repo=nobody/*", vec![]),
+    ];
+    for (uri, expected) in cases {
+        assert_eq!(seqs(&sink.get(uri).await.1), expected, "{uri}");
+    }
+
+    // A long-poll filtered by repo wakes only for that repo.
+    let app = sink.app.clone();
+    let waiter = tokio::spawn(async move {
+        let request = Request::get("/events?host=github.local&repo=markov/*&after=5&wait=5")
+            .header("authorization", format!("Bearer {CONSUMER}"))
+            .body(Body::empty())
+            .unwrap();
+        parse(&call(&app, request).await.1)
+    });
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    sink.post(
+        "gh",
+        &[("x-github-event", "push")],
+        &github_payload("github.local", "fullsend-dev/other"),
+    )
+    .await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(!waiter.is_finished());
+    sink.post(
+        "gh",
+        &[("x-github-event", "push")],
+        &github_payload("github.local", "markov/engine"),
+    )
+    .await;
+    let page = tokio::time::timeout(Duration::from_secs(2), waiter)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(page["events"][0]["repo"], "markov/engine");
+
+    let (_, overview) = sink.admin("GET", "/overview", None).await;
+    assert_eq!(overview["events"]["hosts"][0]["name"], "github.local");
+    let repos: Vec<(String, u64)> = overview["events"]["repos"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| {
+            (
+                r["name"].as_str().unwrap().to_string(),
+                r["count"].as_u64().unwrap(),
+            )
+        })
+        .collect();
+    assert!(
+        repos.contains(&("fullsend-dev/triage-target".into(), 2)),
+        "{repos:?}"
+    );
+    assert!(repos.contains(&("RHAIRFE".into(), 1)), "{repos:?}");
+    let (_, admin_page) = sink
+        .admin("GET", "/events?repo=fullsend-dev/*&host=github.local", None)
+        .await;
+    // Newest first; seq 6 is the fullsend-dev/other push from the long-poll step.
+    assert_eq!(seqs(&admin_page), vec![6, 2, 1]);
+}

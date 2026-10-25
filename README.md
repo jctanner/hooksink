@@ -99,7 +99,7 @@ their values appear as `[redacted]`:
 | Method and path | Auth | Behavior |
 | --- | --- | --- |
 | `POST /hooks/{channel}` | Sender | Stores a delivery. See the response codes below. |
-| `GET /events?channel=&source=&event=&sender=&after=&limit=&wait=` | Consumer | Matching events with `seq > after`, oldest first. Returns `{"events": [...], "next_after": N}`. |
+| `GET /events?channel=&source=&event=&sender=&host=&repo=&after=&limit=&wait=` | Consumer | Matching events with `seq > after`, oldest first. Returns `{"events": [...], "next_after": N}`. |
 | `GET /events/{seq}` | Consumer | One event as JSON. |
 | `GET /events/{seq}/raw` | Consumer | The original body bytes, with the original `Content-Type`. |
 | `GET /channels` | Consumer | Each channel's count and latest `seq`. |
@@ -128,13 +128,32 @@ Filters are applied when the events are read; there are no stored topics.
 | `source` | `github`, `gitlab`, `jira` or `generic` |
 | `event` | The event type, such as `issues`, `pull_request`, `Push Hook` or `jira:issue_created` |
 | `sender` | A sender token ID, such as `tok_…` |
+| `host` | The sending system's host, from the payload, such as `github.local` or `github.com` |
+| `repo` | The repository, from the payload: `owner/repo`, a GitLab project path, or a Jira project key. A value ending in `*` matches by prefix: `repo=fullsend-dev/*` |
 
 Each parameter can repeat, or hold a comma-separated list, and matches any
 of its values. Different parameters combine with AND:
 
 ```text
 /events?source=github&event=issues,pull_request
+/events?host=github.local&repo=fullsend-dev/*&wait=60
 ```
+
+The sink finds the host and repository in each payload when it stores the
+event:
+
+| `source` | `host` from | `repo` from |
+| --- | --- | --- |
+| `github` | `repository.html_url`, else `repository.url`, `organization.url` or `sender.html_url` | `repository.full_name` |
+| `gitlab` | `project.web_url`, else `repository.homepage` or `object_attributes.url` | `project.path_with_namespace` |
+| `jira` | `issue.self`, else `project.self`, `comment.self` or `user.self` | `issue.fields.project.key`, else `project.key`, else the prefix of `issue.key` |
+
+An event without those fields, such as a `generic` delivery or a GitHub
+organization event, has no `repo` (and possibly no `host`). Such an event
+never matches a `host` or `repo` filter.
+
+Events stored before these fields existed are located once, when the
+database is upgraded.
 
 ### Consuming
 
@@ -162,6 +181,7 @@ saved cursor stays valid.
 Each event has these fields:
 
 - `seq`, `channel`, `source`, `event`, `delivery_id`;
+- `host` and `repo`, or `null` when the payload has none;
 - `received_at`, an RFC 3339 timestamp;
 - `sender`, as `{token_id, name, method}`;
 - `headers`, `content_type`, `size`.

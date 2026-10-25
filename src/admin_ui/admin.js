@@ -133,7 +133,7 @@ function renderOverview() {
   text('hook-url', `${base}/hooks/<channel>`);
   text('send-example', `curl -X POST '${base}/hooks/demo' \\\n  -H 'Authorization: Bearer <sender token>' \\\n  -H 'Content-Type: application/json' \\\n  -d '{"hello":"world"}'`);
   text('consume-example', `curl -H 'Authorization: Bearer <consumer token>' \\\n  '${base}/events?channel=demo&after=0&wait=30'`);
-  for (const [target, items] of [['source-facets', o.events.sources], ['type-facets', o.events.types]]) {
+  for (const [target, items] of [['source-facets', o.events.sources], ['type-facets', o.events.types], ['host-facets', o.events.hosts], ['repo-facets', o.events.repos]]) {
     const nodes = items.map(item => badge(`${item.name} · ${number(item.count)}`));
     $(target).replaceChildren(...(nodes.length ? nodes : [element('p', 'Nothing yet.', 'empty-inline')]));
   }
@@ -168,12 +168,15 @@ function renderFilterOptions() {
   options(form.elements.source, 'All sources', state.overview.events.sources.map(s => [s.name, s.name]));
   options(form.elements.event, 'All types', state.overview.events.types.map(t => [t.name, t.name]));
   options(form.elements.sender, 'All senders', state.tokens.sender.map(t => [t.id, t.status === 'revoked' ? `${t.name} (revoked)` : t.name]));
+  options(form.elements.host, 'All hosts', state.overview.events.hosts.map(h => [h.name, h.name]));
+  $('repo-options').replaceChildren(...state.overview.events.repos.map(r => { const option = element('option'); option.value = r.name; return option; }));
   applyFilterToForm();
 }
 
 function applyFilterToForm() {
   const form = $('event-filters');
-  for (const name of ['channel', 'source', 'event', 'sender']) {
+  form.elements.repo.value = state.filter.repo || '';
+  for (const name of ['channel', 'source', 'event', 'sender', 'host']) {
     const select = form.elements[name];
     const wanted = state.filter[name] || '';
     if (wanted && ![...select.options].some(o => o.value === wanted)) {
@@ -206,7 +209,7 @@ function renderEvents() {
   const filtered = Object.values(state.filter).some(Boolean);
   text('events-note', `${number(state.events.length)} shown${filtered ? ' · filtered' : ''}`);
   $('load-more').hidden = !state.nextBefore;
-  if (!state.events.length) { emptyRow('event-rows', 6, filtered ? 'No events match these filters.' : 'No events yet.'); return; }
+  if (!state.events.length) { emptyRow('event-rows', 7, filtered ? 'No events match these filters.' : 'No events yet.'); return; }
   $('event-rows').replaceChildren(...state.events.map(event => {
     const row = element('tr', undefined, 'clickable');
     row.tabIndex = 0;
@@ -217,6 +220,7 @@ function renderEvents() {
       cell(time(event.received_at)),
       cell(lines(event.channel, undefined, true)),
       cell(lines(event.source, event.event || '—')),
+      cell(lines(event.repo || '—', event.host, Boolean(event.repo))),
       cell(senderLabel(event.sender)),
       cell(bytes(event.size)),
     );
@@ -231,6 +235,7 @@ async function openEvent(seq) {
   text('event-title', `#${d.seq} · ${d.source}${d.event ? ` · ${d.event}` : ''}`);
   const meta = [
     ['Channel', d.channel], ['Received', time(d.received_at)], ['Size', bytes(d.size)],
+    ['Host', d.host || '—'], ['Repository', d.repo || '—'],
     ['Delivery ID', d.delivery_id || '—'], ['Content type', d.content_type || '—'],
     ['Sender', d.sender ? `${d.sender.name || d.sender.token_id} (${d.sender.method})` : '—'],
   ];
@@ -338,7 +343,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('event-filters').addEventListener('submit', event => {
     event.preventDefault();
     const form = event.currentTarget;
-    state.filter = Object.fromEntries(['channel', 'source', 'event', 'sender'].map(name => [name, form.elements[name].value]).filter(([, v]) => v));
+    state.filter = Object.fromEntries(['channel', 'source', 'event', 'sender', 'host', 'repo'].map(name => [name, form.elements[name].value.trim()]).filter(([, v]) => v));
     task(event.submitter, () => loadEvents());
   });
   $('load-more').addEventListener('click', event => task(event.currentTarget, () => loadEvents(true)));
