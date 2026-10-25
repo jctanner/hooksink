@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>webhook-sink · Admin</title>
+  <link rel="stylesheet" href="/admin/admin.css">
+  <script src="/admin/admin.js" defer></script>
+</head>
+<body>
+  <section id="connect-screen" class="connect-screen">
+    <div class="connect-card">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">⇲</span><span>webhook-sink<span class="brand-sub">ADMIN CONSOLE</span></span></div>
+      <p class="eyebrow">EVERY DELIVERY, KEPT</p>
+      <h1>Webhooks in, events out.</h1>
+      <p class="muted">Issue tokens for senders and consumers, and browse what has arrived.</p>
+      <form id="connect-form">
+        <label for="admin-key">Admin key</label>
+        <input id="admin-key" name="admin-key" type="password" autocomplete="off" required placeholder="Enter the admin key" spellcheck="false">
+        <p class="hint">On Breadboard it defaults to <code>admin</code>; <code>make host-webhook-sink-tokens</code> prints it. The key stays in this tab’s memory and is cleared when you disconnect or reload.</p>
+        <p id="connect-error" class="form-error" role="alert"></p>
+        <button class="primary full" type="submit">Connect <span aria-hidden="true">→</span></button>
+      </form>
+      <div class="connect-origin"><span class="status-dot"></span><span id="origin"></span></div>
+    </div>
+  </section>
+
+  <div id="app" class="shell" hidden>
+    <aside class="sidebar">
+      <a class="brand" href="/admin/"><span class="brand-mark" aria-hidden="true">⇲</span><span>webhook-sink<span class="brand-sub">ADMIN CONSOLE</span></span></a>
+      <div class="nav-label">WORKSPACE</div>
+      <nav aria-label="Admin views">
+        <button class="nav-item active" data-view="overview" type="button" aria-current="page"><span aria-hidden="true">▥</span> Overview</button>
+        <button class="nav-item" data-view="events" type="button"><span aria-hidden="true">≡</span> Events <span id="event-count" class="nav-count">0</span></button>
+        <button class="nav-item" data-view="senders" type="button"><span aria-hidden="true">↥</span> Sender tokens <span id="sender-count" class="nav-count">0</span></button>
+        <button class="nav-item" data-view="consumers" type="button"><span aria-hidden="true">↧</span> Consumer tokens <span id="consumer-count" class="nav-count">0</span></button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="connection-status"><span id="health-dot" class="status-dot"></span><span id="health-text">Connected</span></div>
+        <p id="version" class="hint"></p>
+        <p id="reveal-mode" class="reveal-mode" hidden><span class="badge warn">Insecure reveal mode</span></p>
+        <button id="disconnect" class="quiet full" type="button">Disconnect</button>
+      </div>
+    </aside>
+    <main>
+      <header class="topbar"><span class="topbar-label">WEBHOOK SINK CONTROL PLANE</span><div><span id="updated-at" class="muted"></span><button id="refresh" class="quiet" type="button">↻ Refresh</button></div></header>
+      <div id="notice" role="status" class="notice" hidden></div>
+
+      <section id="overview-view" class="view">
+        <div class="page-heading"><div><p class="eyebrow">AT A GLANCE</p><h1>Overview</h1><p class="muted">What has arrived, and how senders and consumers connect.</p></div></div>
+        <div class="stats">
+          <article class="stat panel"><span>Events stored</span><strong id="stat-events">—</strong><small>After retention</small></article>
+          <article class="stat panel"><span>Latest sequence</span><strong id="stat-seq">—</strong><small>Consumers' cursor position</small></article>
+          <article class="stat panel"><span>Active sender tokens</span><strong id="stat-senders">—</strong><small>Sign or present one to post</small></article>
+          <article class="stat panel"><span>Active consumer tokens</span><strong id="stat-consumers">—</strong><small>Bearer tokens for reading</small></article>
+        </div>
+        <div class="overview-grid">
+          <article class="panel">
+            <div class="panel-heading"><h2>Sending webhooks</h2></div>
+            <div class="setup">
+              <p>Point a hook at a channel; the channel name is any label you choose.</p>
+              <div class="copy-row"><code id="hook-url"></code></div>
+              <h3>GitHub and Jira</h3>
+              <p>Paste a sender token as the hook’s <strong>secret</strong>. The sink identifies the token by the signature, so the token never appears in the URL.</p>
+              <h3>GitLab</h3>
+              <p>Paste a sender token as the hook’s <strong>secret token</strong>.</p>
+              <h3>Scripts</h3>
+              <pre id="send-example"></pre>
+            </div>
+          </article>
+          <article class="panel">
+            <div class="panel-heading"><h2>Reading events</h2></div>
+            <div class="setup">
+              <p>Keep the last <code>next_after</code> and ask for anything newer. <code>wait</code> holds the request open until an event arrives.</p>
+              <pre id="consume-example"></pre>
+              <p>Filter with <code>channel</code>, <code>source</code>, <code>event</code> and <code>sender</code>; each takes a comma-separated list.</p>
+            </div>
+          </article>
+        </div>
+        <div class="overview-grid">
+          <article class="panel"><div class="panel-heading"><h2>Sources</h2><span class="hint">Detected from headers</span></div><div id="source-facets" class="facet-list"></div></article>
+          <article class="panel"><div class="panel-heading"><h2>Event types</h2><span class="hint">Most frequent first</span></div><div id="type-facets" class="facet-list"></div></article>
+        </div>
+        <article class="panel table-panel">
+          <div class="panel-heading"><h2>Channels</h2><button id="reset-all" class="danger-text" type="button">Reset all events</button></div>
+          <div class="table-scroll"><table><thead><tr><th>Channel</th><th>Events</th><th>Latest</th><th>Last received</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody id="channel-rows"></tbody></table></div>
+        </article>
+      </section>
+
+      <section id="events-view" class="view" hidden>
+        <div class="page-heading"><div><p class="eyebrow">DELIVERIES</p><h1>Events</h1><p class="muted">Newest first. Select a row for its headers and payload.</p></div></div>
+        <form id="event-filters" class="filters event-filters panel">
+          <label>Channel<select name="channel"><option value="">All channels</option></select></label>
+          <label>Source<select name="source"><option value="">All sources</option></select></label>
+          <label>Event type<select name="event"><option value="">All types</option></select></label>
+          <label>Sender token<select name="sender"><option value="">All senders</option></select></label>
+          <button class="primary" type="submit">Apply filters</button>
+        </form>
+        <article class="panel table-panel">
+          <div class="panel-heading"><h2>Deliveries</h2><span id="events-note" class="hint"></span></div>
+          <div class="table-scroll"><table><thead><tr><th>Seq</th><th>Received</th><th>Channel</th><th>Source / event</th><th>Sender</th><th>Size</th></tr></thead><tbody id="event-rows"></tbody></table></div>
+          <div class="table-footer"><span class="hint">Retention removes old events automatically.</span><button id="load-more" class="secondary" type="button" hidden>Load older events</button></div>
+        </article>
+      </section>
+
+      <section id="tokens-view" class="view" hidden>
+        <div class="page-heading"><div><p id="tokens-eyebrow" class="eyebrow"></p><h1 id="tokens-title"></h1><p id="tokens-intro" class="muted"></p></div><button id="issue-token" class="primary" type="button">+ Issue token</button></div>
+        <p id="reveal-warning" class="notice warn-notice" hidden>Insecure reveal mode is on (<code>WEBHOOK_SINK_INSECURE_REVEAL_TOKENS</code>): anyone with the admin key can show and copy token values. Use it for local development only.</p>
+        <article class="panel table-panel">
+          <div class="panel-heading"><h2 id="tokens-heading"></h2><span id="tokens-note" class="hint"></span></div>
+          <div class="table-scroll"><table><thead><tr><th>Name</th><th>Token</th><th>Status</th><th>Created</th><th>Last used</th><th>Actions</th></tr></thead><tbody id="token-rows"></tbody></table></div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="token-dialog">
+    <form id="token-form">
+      <div class="dialog-heading"><div><p id="token-dialog-eyebrow" class="eyebrow"></p><h2>Issue a token</h2></div><button class="icon-button" type="button" data-close="token-dialog" aria-label="Close">×</button></div>
+      <label>Name<input name="name" required maxlength="80" placeholder="e.g. github-emulator"></label>
+      <label>Description<span class="optional">optional</span><textarea name="description" rows="2" maxlength="500" placeholder="Who uses it, and where it is configured"></textarea></label>
+      <p id="token-error" class="form-error" role="alert"></p>
+      <div class="dialog-footer"><button class="secondary" type="button" data-close="token-dialog">Cancel</button><button class="primary" type="submit">Issue token</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="secret-dialog" class="wide-dialog">
+    <div class="dialog-heading"><div><p id="secret-eyebrow" class="eyebrow">SHOWN ONCE</p><h2 id="secret-title">Token issued</h2></div><button class="icon-button" type="button" data-close="secret-dialog" aria-label="Close">×</button></div>
+    <p id="secret-note" class="muted">Copy the value now. It cannot be shown again; rotate the token if it is lost.</p>
+    <label>Value<input id="issued-secret" readonly></label>
+    <div class="secret-actions"><button id="copy-secret" class="secondary" type="button">Copy value</button></div>
+    <div id="secret-usage" class="usage"></div>
+    <div class="dialog-footer"><button class="primary" type="button" data-close="secret-dialog">Done</button></div>
+  </dialog>
+
+  <dialog id="event-dialog" class="detail-dialog">
+    <div class="dialog-heading"><div><p class="eyebrow">DELIVERY</p><h2 id="event-title"></h2></div><button class="icon-button" type="button" data-close="event-dialog" aria-label="Close">×</button></div>
+    <dl id="event-meta" class="detail-meta"></dl>
+    <div class="detail-tabs"><button class="quiet active" type="button" data-tab="payload">Payload</button><button class="quiet" type="button" data-tab="headers">Headers</button><button class="quiet" type="button" data-tab="raw">Raw body</button></div>
+    <pre id="event-body"></pre>
+  </dialog>
+
+  <dialog id="confirm-dialog">
+    <div class="dialog-heading"><div><p class="eyebrow">CONFIRM</p><h2 id="confirm-title"></h2></div><button class="icon-button" type="button" data-close="confirm-dialog" aria-label="Close">×</button></div>
+    <p id="confirm-text" class="muted"></p>
+    <div class="dialog-footer"><button class="secondary" type="button" data-close="confirm-dialog">Cancel</button><button id="confirm-action" class="danger" type="button"></button></div>
+  </dialog>
+</body>
+</html>
