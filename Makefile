@@ -1,4 +1,4 @@
-IMAGE ?= webhook-sink:latest
+IMAGE ?= hooksink:latest
 RUST_IMAGE ?= docker.io/library/rust:1.90-alpine
 CONTAINER ?= $(shell command -v podman >/dev/null 2>&1 && echo podman || echo docker)
 
@@ -11,7 +11,7 @@ test: ## Unit and HTTP tests
 	cargo test
 
 run: ## Run locally on :8080 with ./data/events.sqlite
-	WEBHOOK_SINK_LISTEN=127.0.0.1:8080 WEBHOOK_SINK_DB=./data/events.sqlite cargo run
+	HOOKSINK_LISTEN=127.0.0.1:8080 HOOKSINK_DB=./data/events.sqlite cargo run
 
 image: ## Container image; the build runs fmt, clippy and tests first
 	$(CONTAINER) build -t $(IMAGE) .

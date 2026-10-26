@@ -11,11 +11,11 @@ use serde_json::{Value, json};
 use tokio::sync::watch;
 use tower::ServiceExt;
 
-use webhook_sink_service::admin::{self, AdminState};
-use webhook_sink_service::api::{self, AppState, Settings};
-use webhook_sink_service::store::SqliteStore;
-use webhook_sink_service::tokens::{TokenKind, TokenStore};
-use webhook_sink_service::verify::{sign, signature_matches};
+use hooksink::admin::{self, AdminState};
+use hooksink::api::{self, AppState, Settings};
+use hooksink::store::SqliteStore;
+use hooksink::tokens::{TokenKind, TokenStore};
+use hooksink::verify::{sign, signature_matches};
 
 const SENDER: &str = "whs_test-sender-token-value-0001";
 const CONSUMER: &str = "whc_test-consumer-token-value-01";
@@ -524,7 +524,7 @@ async fn admin_api_requires_the_admin_key() {
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    assert!(String::from_utf8(page).unwrap().contains("webhook-sink"));
+    assert!(String::from_utf8(page).unwrap().contains("hooksink"));
     let (status, overview) = sink.admin("GET", "/overview", None).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(overview["public_url"], "http://sink.test");
@@ -692,7 +692,7 @@ async fn token_values_are_hidden_outside_reveal_mode() {
         body["message"]
             .as_str()
             .unwrap()
-            .contains("WEBHOOK_SINK_INSECURE_REVEAL_TOKENS")
+            .contains("HOOKSINK_INSECURE_REVEAL_TOKENS")
     );
     let (_, overview) = sink.admin("GET", "/overview", None).await;
     assert_eq!(overview["insecure_reveal_tokens"], false);

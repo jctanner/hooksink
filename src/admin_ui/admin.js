@@ -127,7 +127,7 @@ function renderOverview() {
   text('event-count', number(o.events.total));
   text('sender-count', number(o.tokens.sender));
   text('consumer-count', number(o.tokens.consumer));
-  text('version', `webhook-sink ${o.version}`);
+  text('version', `hooksink ${o.version}`);
   $('reveal-mode').hidden = !o.insecure_reveal_tokens;
   const base = publicURL();
   text('hook-url', `${base}/hooks/<channel>`);

@@ -6,11 +6,11 @@ use chrono::Utc;
 use tokio::net::TcpListener;
 use tokio::sync::watch;
 
-use webhook_sink_service::admin::{self, AdminState};
-use webhook_sink_service::api::{self, AppState, Settings};
-use webhook_sink_service::config::{Config, Retention};
-use webhook_sink_service::store::{EventStore, SqliteStore};
-use webhook_sink_service::tokens::{DefaultToken, TokenKind, TokenStore};
+use hooksink::admin::{self, AdminState};
+use hooksink::api::{self, AppState, Settings};
+use hooksink::config::{Config, Retention};
+use hooksink::store::{EventStore, SqliteStore};
+use hooksink::tokens::{DefaultToken, TokenKind, TokenStore};
 
 const RETENTION_INTERVAL: Duration = Duration::from_secs(60);
 /// Shorter values are accepted but warned about.
@@ -21,7 +21,7 @@ async fn main() -> ExitCode {
     match run().await {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("webhook-sink: {e}");
+            eprintln!("hooksink: {e}");
             ExitCode::FAILURE
         }
     }
@@ -87,7 +87,7 @@ async fn run() -> Result<(), String> {
         .await
         .map_err(|e| format!("bind {}: {e}", config.listen))?;
     eprintln!(
-        "webhook-sink listening on {} (db {})",
+        "hooksink listening on {} (db {})",
         config.listen,
         config.db_path.display()
     );
@@ -109,7 +109,7 @@ async fn run() -> Result<(), String> {
             let listener = TcpListener::bind(config.admin_listen)
                 .await
                 .map_err(|e| format!("bind {}: {e}", config.admin_listen))?;
-            eprintln!("webhook-sink admin console on {}", config.admin_listen);
+            eprintln!("hooksink admin console on {}", config.admin_listen);
             Some(tokio::spawn(
                 axum::serve(listener, app)
                     .with_graceful_shutdown(wait_for(shutdown_rx))
@@ -117,7 +117,7 @@ async fn run() -> Result<(), String> {
             ))
         }
         None => {
-            eprintln!("webhook-sink admin console disabled: no WEBHOOK_SINK_ADMIN_KEY");
+            eprintln!("hooksink admin console disabled: no HOOKSINK_ADMIN_KEY");
             None
         }
     };

@@ -13,6 +13,8 @@ consumers. See `README.md`.
 - [Host and repository filters](docs/tasks/done/host-and-repo-filters.md):
   `host=` and `repo=` (with `org/*` prefixes), located from each payload at
   ingest and backfilled for older events.
+- [Hooksink naming](docs/tasks/done/hooksink-naming.md): `HOOKSINK_*`
+  configuration, and the package, binary and console named hooksink.
 
 ## Next
 

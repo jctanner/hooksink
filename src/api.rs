@@ -207,7 +207,7 @@ async fn healthz() -> Response {
 
 async fn index() -> Response {
     Json(json!({
-        "service": "webhook-sink",
+        "service": "hooksink",
         "version": env!("CARGO_PKG_VERSION"),
         "endpoints": [
             "POST /hooks/{channel}   (sender token: signature, X-Gitlab-Token, Bearer or ?token=)",

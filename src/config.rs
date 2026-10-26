@@ -1,4 +1,4 @@
-//! Runtime configuration, read from `WEBHOOK_SINK_*` environment variables.
+//! Runtime configuration, read from `HOOKSINK_*` environment variables.
 //!
 //! Each secret can be given directly, or as a path in a `*_FILE` variable,
 //! as a mounted Kubernetes Secret lays it out.
@@ -52,30 +52,30 @@ impl Config {
                 .parse()
                 .map_err(|e| format!("{name}: {e}"))
         };
-        let max_body_bytes = number("WEBHOOK_SINK_MAX_BODY_BYTES")?
-            .unwrap_or(DEFAULT_MAX_BODY_BYTES as u64) as usize;
-        let max_wait = Duration::from_secs(number("WEBHOOK_SINK_MAX_WAIT_SECONDS")?.unwrap_or(60));
+        let max_body_bytes =
+            number("HOOKSINK_MAX_BODY_BYTES")?.unwrap_or(DEFAULT_MAX_BODY_BYTES as u64) as usize;
+        let max_wait = Duration::from_secs(number("HOOKSINK_MAX_WAIT_SECONDS")?.unwrap_or(60));
         // Zero disables a limit.
         let retention = Retention {
-            max_age: number("WEBHOOK_SINK_RETENTION_MAX_AGE_SECONDS")?
+            max_age: number("HOOKSINK_RETENTION_MAX_AGE_SECONDS")?
                 .or(Some(7 * 24 * 3600))
                 .filter(|&s| s > 0)
                 .map(Duration::from_secs),
-            max_events: number("WEBHOOK_SINK_RETENTION_MAX_EVENTS")?
+            max_events: number("HOOKSINK_RETENTION_MAX_EVENTS")?
                 .or(Some(100_000))
                 .filter(|&n| n > 0),
         };
         Ok(Self {
-            listen: address("WEBHOOK_SINK_LISTEN", "0.0.0.0:8080")?,
-            admin_listen: address("WEBHOOK_SINK_ADMIN_LISTEN", "0.0.0.0:8081")?,
-            db_path: var("WEBHOOK_SINK_DB")
+            listen: address("HOOKSINK_LISTEN", "0.0.0.0:8080")?,
+            admin_listen: address("HOOKSINK_ADMIN_LISTEN", "0.0.0.0:8081")?,
+            db_path: var("HOOKSINK_DB")
                 .unwrap_or_else(|| "/data/events.sqlite".into())
                 .into(),
-            admin_key: secret("WEBHOOK_SINK_ADMIN_KEY")?,
-            default_sender_token: secret("WEBHOOK_SINK_DEFAULT_SENDER_TOKEN")?,
-            default_consumer_token: secret("WEBHOOK_SINK_DEFAULT_CONSUMER_TOKEN")?,
-            public_url: var("WEBHOOK_SINK_PUBLIC_URL"),
-            insecure_reveal_tokens: flag("WEBHOOK_SINK_INSECURE_REVEAL_TOKENS")?,
+            admin_key: secret("HOOKSINK_ADMIN_KEY")?,
+            default_sender_token: secret("HOOKSINK_DEFAULT_SENDER_TOKEN")?,
+            default_consumer_token: secret("HOOKSINK_DEFAULT_CONSUMER_TOKEN")?,
+            public_url: var("HOOKSINK_PUBLIC_URL"),
+            insecure_reveal_tokens: flag("HOOKSINK_INSECURE_REVEAL_TOKENS")?,
             max_body_bytes,
             max_wait,
             retention,

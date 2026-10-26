@@ -365,7 +365,7 @@ async fn token_value(State(state): State<AdminState>, Path(id): Path<String>) ->
     if !state.reveal_tokens {
         return error(
             StatusCode::FORBIDDEN,
-            "token values can be shown only in insecure reveal mode (WEBHOOK_SINK_INSECURE_REVEAL_TOKENS)",
+            "token values can be shown only in insecure reveal mode (HOOKSINK_INSECURE_REVEAL_TOKENS)",
         );
     }
     let tokens = state.tokens.clone();

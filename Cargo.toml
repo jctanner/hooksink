@@ -1,5 +1,5 @@
 [package]
-name = "webhook-sink-service"
+name = "hooksink"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.90"
@@ -7,7 +7,7 @@ description = "Durable webhook sink with cursor and long-poll consumers"
 license = "Apache-2.0"
 
 [[bin]]
-name = "webhook-sink"
+name = "hooksink"
 path = "src/main.rs"
 
 [dependencies]

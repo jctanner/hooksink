@@ -1,4 +1,4 @@
-# webhook-sink image: a static musl binary on scratch. Build from the
+# hooksink image: a static musl binary on scratch. Build from the
 # repository root. The build stage runs fmt, clippy and the tests first.
 FROM docker.io/library/rust:1.90-alpine AS build
 RUN apk add --no-cache gcc musl-dev \
@@ -23,15 +23,15 @@ RUN touch src/main.rs src/lib.rs \
     && cargo test --locked \
     && cargo build --locked --release \
     && mkdir -p /out/data \
-    && cp target/release/webhook-sink /out/webhook-sink
+    && cp target/release/hooksink /out/hooksink
 
 FROM scratch
-COPY --from=build /out/webhook-sink /webhook-sink
+COPY --from=build /out/hooksink /hooksink
 COPY --from=build --chown=1000:1000 /out/data /data
 USER 1000:1000
-ENV WEBHOOK_SINK_LISTEN=0.0.0.0:8080 \
-    WEBHOOK_SINK_ADMIN_LISTEN=0.0.0.0:8081 \
-    WEBHOOK_SINK_DB=/data/events.sqlite
+ENV HOOKSINK_LISTEN=0.0.0.0:8080 \
+    HOOKSINK_ADMIN_LISTEN=0.0.0.0:8081 \
+    HOOKSINK_DB=/data/events.sqlite
 # 8080: /hooks and consumer reads. 8081: admin console and API.
 EXPOSE 8080 8081
-ENTRYPOINT ["/webhook-sink"]
+ENTRYPOINT ["/hooksink"]

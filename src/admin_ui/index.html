@@ -3,21 +3,21 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>webhook-sink · Admin</title>
+  <title>hooksink · Admin</title>
   <link rel="stylesheet" href="/admin/admin.css">
   <script src="/admin/admin.js" defer></script>
 </head>
 <body>
   <section id="connect-screen" class="connect-screen">
     <div class="connect-card">
-      <div class="brand"><span class="brand-mark" aria-hidden="true">⇲</span><span>webhook-sink<span class="brand-sub">ADMIN CONSOLE</span></span></div>
+      <div class="brand"><span class="brand-mark" aria-hidden="true">⇲</span><span>hooksink<span class="brand-sub">ADMIN CONSOLE</span></span></div>
       <p class="eyebrow">EVERY DELIVERY, KEPT</p>
       <h1>Webhooks in, events out.</h1>
       <p class="muted">Issue tokens for senders and consumers, and browse what has arrived.</p>
       <form id="connect-form">
         <label for="admin-key">Admin key</label>
         <input id="admin-key" name="admin-key" type="password" autocomplete="off" required placeholder="Enter the admin key" spellcheck="false">
-        <p class="hint">On Breadboard it defaults to <code>admin</code>; <code>make host-webhook-sink-tokens</code> prints it. The key stays in this tab’s memory and is cleared when you disconnect or reload.</p>
+        <p class="hint">On Breadboard it defaults to <code>admin</code>; <code>make host-hooksink-tokens</code> prints it. The key stays in this tab’s memory and is cleared when you disconnect or reload.</p>
         <p id="connect-error" class="form-error" role="alert"></p>
         <button class="primary full" type="submit">Connect <span aria-hidden="true">→</span></button>
       </form>
@@ -27,7 +27,7 @@
 
   <div id="app" class="shell" hidden>
     <aside class="sidebar">
-      <a class="brand" href="/admin/"><span class="brand-mark" aria-hidden="true">⇲</span><span>webhook-sink<span class="brand-sub">ADMIN CONSOLE</span></span></a>
+      <a class="brand" href="/admin/"><span class="brand-mark" aria-hidden="true">⇲</span><span>hooksink<span class="brand-sub">ADMIN CONSOLE</span></span></a>
       <div class="nav-label">WORKSPACE</div>
       <nav aria-label="Admin views">
         <button class="nav-item active" data-view="overview" type="button" aria-current="page"><span aria-hidden="true">▥</span> Overview</button>
@@ -112,7 +112,7 @@
 
       <section id="tokens-view" class="view" hidden>
         <div class="page-heading"><div><p id="tokens-eyebrow" class="eyebrow"></p><h1 id="tokens-title"></h1><p id="tokens-intro" class="muted"></p></div><button id="issue-token" class="primary" type="button">+ Issue token</button></div>
-        <p id="reveal-warning" class="notice warn-notice" hidden>Insecure reveal mode is on (<code>WEBHOOK_SINK_INSECURE_REVEAL_TOKENS</code>): anyone with the admin key can show and copy token values. Use it for local development only.</p>
+        <p id="reveal-warning" class="notice warn-notice" hidden>Insecure reveal mode is on (<code>HOOKSINK_INSECURE_REVEAL_TOKENS</code>): anyone with the admin key can show and copy token values. Use it for local development only.</p>
         <article class="panel table-panel">
           <div class="panel-heading"><h2 id="tokens-heading"></h2><span id="tokens-note" class="hint"></span></div>
           <div class="table-scroll"><table><thead><tr><th>Name</th><th>Token</th><th>Status</th><th>Created</th><th>Last used</th><th>Actions</th></tr></thead><tbody id="token-rows"></tbody></table></div>

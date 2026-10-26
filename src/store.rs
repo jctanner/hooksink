@@ -145,7 +145,7 @@ pub struct SqliteStore {
     conn: Mutex<Connection>,
     /// Keep consumer token values as well as their fingerprints, so the
     /// admin console can show them. Off by default; see
-    /// `WEBHOOK_SINK_INSECURE_REVEAL_TOKENS`.
+    /// `HOOKSINK_INSECURE_REVEAL_TOKENS`.
     keep_consumer_values: bool,
 }
 

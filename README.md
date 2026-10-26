@@ -1,4 +1,4 @@
-# webhook-sink-service
+# hooksink
 
 The webhook sink is a small, durable receiver for webhooks. Senders, such as
 GitHub, Jira, GitLab or scripts, post deliveries to a named channel.
@@ -35,8 +35,8 @@ A token's value is shown once, when it is issued or rotated. Rotating keeps
 the token's ID and name and replaces its value. Revoking is permanent, and
 it also discards a sender token's stored value.
 
-**Default tokens.** At startup, `WEBHOOK_SINK_DEFAULT_SENDER_TOKEN` and
-`WEBHOOK_SINK_DEFAULT_CONSUMER_TOKEN` become the default token of each kind:
+**Default tokens.** At startup, `HOOKSINK_DEFAULT_SENDER_TOKEN` and
+`HOOKSINK_DEFAULT_CONSUMER_TOKEN` become the default token of each kind:
 
 - A token with that value is created if it does not exist.
 - If the configured value changes, the new token becomes the default. The
@@ -46,7 +46,7 @@ it also discards a sender token's stored value.
 
 ### Insecure reveal mode
 
-With `WEBHOOK_SINK_INSECURE_REVEAL_TOKENS=true`:
+With `HOOKSINK_INSECURE_REVEAL_TOKENS=true`:
 
 - consumer token values are stored, as sender values always are;
 - the console shows **Show** and **Copy** for every active token whose
@@ -163,14 +163,14 @@ Keep the last `next_after` you saw and ask for anything newer:
 after=0
 while true; do
   page=$(curl -s -H "Authorization: Bearer $WHC_TOKEN" \
-    "http://webhook-sink/events?source=github&after=$after&wait=30")
+    "http://hooksink/events?source=github&after=$after&wait=30")
   # ... handle .events ...
   after=$(jq .next_after <<<"$page")
 done
 ```
 
 With `wait`, a request that finds nothing waits, up to that many seconds
-(capped by `WEBHOOK_SINK_MAX_WAIT_SECONDS`), and returns as soon as a
+(capped by `HOOKSINK_MAX_WAIT_SECONDS`), and returns as soon as a
 matching event arrives.
 
 Sequence numbers only grow. They are never reused, even after a reset, so a
@@ -241,18 +241,18 @@ name with `_FILE` added.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `WEBHOOK_SINK_LISTEN` | `0.0.0.0:8080` | Public listener |
-| `WEBHOOK_SINK_ADMIN_LISTEN` | `0.0.0.0:8081` | Admin listener |
-| `WEBHOOK_SINK_ADMIN_KEY[_FILE]` | unset | Admin key. Without it, the admin listener does not start. |
-| `WEBHOOK_SINK_DEFAULT_SENDER_TOKEN[_FILE]` | unset | Made the default sender token at startup |
-| `WEBHOOK_SINK_DEFAULT_CONSUMER_TOKEN[_FILE]` | unset | Made the default consumer token at startup |
-| `WEBHOOK_SINK_PUBLIC_URL` | unset | Base URL for senders and consumers, shown in the console |
-| `WEBHOOK_SINK_INSECURE_REVEAL_TOKENS` | `false` | Insecure reveal mode, for local development. See below. |
-| `WEBHOOK_SINK_DB` | `/data/events.sqlite` | SQLite database, in WAL mode with `synchronous=FULL` |
-| `WEBHOOK_SINK_MAX_BODY_BYTES` | `26214400` | Body cap, 25 MB, the same as GitHub's |
-| `WEBHOOK_SINK_MAX_WAIT_SECONDS` | `60` | Long-poll cap |
-| `WEBHOOK_SINK_RETENTION_MAX_AGE_SECONDS` | `604800` | Delete events older than this. `0` disables the limit. |
-| `WEBHOOK_SINK_RETENTION_MAX_EVENTS` | `100000` | Keep at most this many events. `0` disables the limit. |
+| `HOOKSINK_LISTEN` | `0.0.0.0:8080` | Public listener |
+| `HOOKSINK_ADMIN_LISTEN` | `0.0.0.0:8081` | Admin listener |
+| `HOOKSINK_ADMIN_KEY[_FILE]` | unset | Admin key. Without it, the admin listener does not start. |
+| `HOOKSINK_DEFAULT_SENDER_TOKEN[_FILE]` | unset | Made the default sender token at startup |
+| `HOOKSINK_DEFAULT_CONSUMER_TOKEN[_FILE]` | unset | Made the default consumer token at startup |
+| `HOOKSINK_PUBLIC_URL` | unset | Base URL for senders and consumers, shown in the console |
+| `HOOKSINK_INSECURE_REVEAL_TOKENS` | `false` | Insecure reveal mode, for local development. See below. |
+| `HOOKSINK_DB` | `/data/events.sqlite` | SQLite database, in WAL mode with `synchronous=FULL` |
+| `HOOKSINK_MAX_BODY_BYTES` | `26214400` | Body cap, 25 MB, the same as GitHub's |
+| `HOOKSINK_MAX_WAIT_SECONDS` | `60` | Long-poll cap |
+| `HOOKSINK_RETENTION_MAX_AGE_SECONDS` | `604800` | Delete events older than this. `0` disables the limit. |
+| `HOOKSINK_RETENTION_MAX_EVENTS` | `100000` | Keep at most this many events. `0` disables the limit. |
 
 Retention runs once a minute. On SIGTERM both listeners stop accepting
 connections, and waiting long-polls are released immediately.
@@ -271,7 +271,7 @@ make fmt         # apply rustfmt, in the build image
 ```
 
 `make run` starts without an admin key or default tokens, so it accepts no
-deliveries. Set `WEBHOOK_SINK_ADMIN_KEY` and issue tokens in the console, or
+deliveries. Set `HOOKSINK_ADMIN_KEY` and issue tokens in the console, or
 set the default token variables.
 
 The sink keeps one SQLite writer, so run one replica. See

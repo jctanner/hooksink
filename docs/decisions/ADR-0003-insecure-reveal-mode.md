@@ -16,7 +16,8 @@ token whose value was not copied. Model Relay's local admin key is plain
 
 ## Decision
 
-Add `WEBHOOK_SINK_INSECURE_REVEAL_TOKENS`, off by default. When it is on:
+Add `HOOKSINK_INSECURE_REVEAL_TOKENS` (named
+`WEBHOOK_SINK_INSECURE_REVEAL_TOKENS` until 2026-10-26), off by default. When it is on:
 
 - consumer values are stored, as sender values already are;
 - the default consumer token's value is backfilled from configuration;

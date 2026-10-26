@@ -27,7 +27,7 @@ This file is the starting point for agents working in this repository.
 | `src/tokens.rs` | Token kinds, generation, fingerprints, and the `TokenStore` trait. |
 | `src/store.rs` | The `EventStore` and `TokenStore` traits' SQLite implementation and its migrations. The HTTP layers must use only the traits. |
 | `src/verify.rs` | Signature checks and sender classification. |
-| `src/config.rs` | `WEBHOOK_SINK_*` environment variables. |
+| `src/config.rs` | `HOOKSINK_*` environment variables. |
 | `src/main.rs` | Startup, retention task, graceful shutdown. |
 | `tests/api.rs` | HTTP tests through the real router. |
 
@@ -62,7 +62,7 @@ These are the API contract; change them only with an ADR:
 Breadboard deploys this sink. Its deployment wiring lives in the Breadboard
 repository, not here:
 
-- `deploy/k8s/31-webhook-sink.yaml`
-- `deploy/scripts/05n-build-webhook-sink.sh`
-- `deploy/scripts/28-deploy-webhook-sink.sh`
-- `make host-rebuild-webhook-sink`
+- `deploy/k8s/31-hooksink.yaml`
+- `deploy/scripts/05n-build-hooksink.sh`
+- `deploy/scripts/28-deploy-hooksink.sh`
+- `make host-rebuild-hooksink`
