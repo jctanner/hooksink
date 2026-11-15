@@ -1,2 +1,6 @@
 /target
 /data
+
+# Python release-workflow test bytecode
+__pycache__/
+*.pyc

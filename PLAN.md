@@ -28,3 +28,7 @@ consumers. See `README.md`.
 - [ADR-0001: Rust, SQLite and one replica](docs/decisions/ADR-0001-rust-sqlite-single-replica.md)
 - [ADR-0002: Sender tokens are signing secrets; filters instead of topics](docs/decisions/ADR-0002-sender-tokens-are-signing-secrets.md)
 - [ADR-0003: An opt-in insecure mode reveals token values](docs/decisions/ADR-0003-insecure-reveal-mode.md)
+
+## CC-43
+
+- [Release workflows](docs/tasks/current/cc-43-releases.md)
